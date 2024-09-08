@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Subset, DataLoader
 
+
 def _set_attr(obj, names, val):
   if len(names) == 1:
     setattr(obj, names[0], val)
