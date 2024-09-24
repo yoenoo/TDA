@@ -29,19 +29,20 @@ class BaseInfluenceModule:
     self.neg_class = neg_class 
     self.damp = damp
 
-  def compute_cost(self, xs, ys, element_wise=False):
-    return self._compute_cost(xs, ys, theta_=self.model.fc.weight, element_wise=element_wise)
+  def compute_cost(self, xs, ys, train, elementwise=False):
+    return self._compute_cost(xs, ys, train, theta_=self.model.fc.weight, elementwise=elementwise)
 
-  def _compute_cost(self, xs, ys, theta_, element_wise=False):
-    yhat = self.model(xs)
+  def _compute_cost(self, xs, ys, train, theta_, elementwise=False):
+    # yhat = model(xs) ## TODO: gradient doesn't flow
+    yhat = 1 / (1 + torch.exp(-xs @ theta_.T))
     ys = torch.where(ys == self.neg_class, 1., 0.).reshape(-1,1)
-    if element_wise:
-      cost = torch.nn.functional.binary_cross_entropy(yhat, ys, reduction="none")
+    if elementwise:
       # cost = -torch.sum(ys*torch.log(yhat) + (1-ys)*torch.log(1-yhat), dim=1)
+      cost = torch.nn.functional.binary_cross_entropy(yhat, ys, reduction="none").reshape(-1)
     else:
-      cost = torch.nn.functional.binary_cross_entropy(yhat, ys, reduction="mean")
       # cost = -torch.sum(ys*torch.log(yhat) + (1-ys)*torch.log(1-yhat), dim=1).mean()
-      if self.damp is not None:
+      cost = torch.nn.functional.binary_cross_entropy(yhat, ys, reduction="mean")
+      if self.damp is not None and train:
         cost += self.damp * theta_.pow(2).sum().sqrt()
 
     return cost
@@ -55,11 +56,11 @@ class BaseInfluenceModule:
   def compute_accuracy(self, xs, ys):
     acc = evaluate.load("accuracy")    
     yhat = self.model(xs).reshape(-1)
-    preds = [1 if x > 0.5 else 0 for x in yhat]
+    preds = [self.neg_class if x > 0.5 else self.pos_class for x in yhat]
     return acc.compute(references=ys, predictions=preds)["accuracy"]
 
-  def _compute_grad(self, xs, ys):
-    cost = self.compute_cost(xs, ys)
+  def _compute_grad(self, xs, ys, train=True):
+    cost = self.compute_cost(xs, ys, train)
     grad = torch.autograd.grad(cost, self.model.fc.weight)
     if len(grad) == 1:
       grad = grad[0]
@@ -68,13 +69,13 @@ class BaseInfluenceModule:
     
     return cost, grad
 
-  def _compute_hessian(self, xs, ys):
-    def f(theta_): return self._compute_cost(xs, ys, theta_)
+  def _compute_hessian(self, xs, ys, train):
+    def f(theta_): return self._compute_cost(xs, ys, train, theta_)
     hessian = torch.autograd.functional.hessian(f, self.model.fc.weight).squeeze()
     return hessian
 
-  def _compute_inv_hessian(self, xs, ys):
-    return torch.inverse(self._compute_hessian(xs, ys))
+  def _compute_inv_hessian(self, xs, ys, train):
+    return torch.inverse(self._compute_hessian(xs, ys, train))
 
 
 
