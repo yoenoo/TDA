@@ -7,4 +7,7 @@
 
 
 - Can we do a conformal prediction on the influence function values?
-- Ranking gaps
+- Ranking Influence Functions, distributions
+
+### Next Steps:
+- Similarity in learned representations?
